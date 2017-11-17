@@ -1,0 +1,337 @@
+	REAL MU,K,KE
+	
+	INTEGER E,CN,R,RR,FPI,A,H,P,Q,RX,RY
+	DIMENSION K(1000),KE(6,6),CN(6),R(400,2),UU(3,3),TT(100),
+     .A(400),U(400),FPI(20),FXY(20,2),RR(8),RX(8),RY(8)
+	COMMON/CC1/EE,MU,XX(300),YY(300),IE(500),JE(500),ME(500),
+     2MEE(3),BI,BJ,BM,CI,CJ,CM,S
+     2/CC2/ET,H11,H22,H12,H21/CC3/VV
+
+c	输入初始数据
+	OPEN(1,FILE='DAT.txt')
+	READ(1,29)KEY
+	READ(1,30)NP,NE,NB,NL,EE,MU,C,WX,WY
+	READ(1,2222)(FPI(I),I=1,NL)
+	READ(1,37)	((FXY(I,J),I=1,NL),J=1,2)
+	READ(1,32)	(RR(I),I=1,NB),(RX(I),I=1,NB),(RY(I),I=1,NB)
+	READ(1,1111)(XX(L),L=1,NP)	
+	READ(1,1111)(YY(L),L=1,NP)	
+	READ(1,2222)(IE(E),E=1,NE)	
+	READ(1,2222)(JE(E),E=1,NE)	
+	READ(1,2222)(ME(E),E=1,NE)	
+	READ(1,1111)(TT(E),E=1,NE)
+	CLOSE(1)
+C	输出初始数据
+	OPEN(2,FILE='DAT1.txt',STATUS='NEW',ERR=775)
+775	WRITE(*,*)'写文件有错'		
+	WRITE(2,1101)NP,NE,NB,NL,EE,MU,C,WX,WY
+	WRITE(2,2222)(FPI(I),I=1,NL)
+	WRITE(2,1111)	((FXY(I,J),I=1,NL),J=1,2)
+	WRITE(2,32)	(RR(I),I=1,NB),(RX(I),I=1,NB),(RY(I),I=1,NB)		
+	WRITE(2,1102)
+	WRITE(2,1003)(L,XX(L),YY(L),L=1,NP)
+	WRITE(2,1103)
+	WRITE(2,2200)(E,IE(E),JE(E),ME(E),TT(E),E=1,NE)
+	
+C	将节点的图纸坐标还原为实际坐标
+	
+49	DO 50 I=1,NP
+	 
+	XX(I)=XX(I)/C
+50	YY(I)=YY(I)/C
+c	如果key=0 则计算平面应力问题,否则计算平面问题应变问题
+	IF(KEY.NE.0)GOTO 55
+	EE=EE/(1-MU*MU)
+	MU=MU/(1-MU)
+C	处理零位移约束条件
+55	DO 100 I=1,NP
+	DO 100 J=1,2
+100	R(I,J)=1
+	DO 110 I=1,NB
+	R(RR(I),1)=RX(I)
+	R(RR(I),2)=RY(I)
+110	CONTINUE
+	N=0
+	DO 120 I=1,NP
+	DO 120 J=1,2
+	IF(R(I,J).EQ.0)GOTO 120
+	R(I,J)=R(I,J)+N
+	N=N+1
+120	CONTINUE
+	WRITE(2,111)N
+C	求整体刚度矩阵 按一位数组存放总长和其主对角线元素存放的地址】
+	DO 130 I=1,N
+130	A(I)=0
+
+
+	DO 140 E=1,NE
+	CALL SECU(E)
+	DO 131 P=1,3
+	CN(2*P-1)=R(MEE(P),1)
+131	CN(2*P)=R(MEE(P),2)
+	DO 140 P=1,6
+	DO 140 Q=1,6
+	IF(((CN(P)-CN(Q)).GE.A(CN(P))).AND.CN(P).NE.0.AND.CN(Q).NE.0)
+     1A(CN(P))=CN(P)-CN(Q)
+140	CONTINUE
+	MAX=0
+	A(1)=1
+	DO 143 I=2,N
+	IF(A(I).GT.MAX) MAX=A(I)
+	A(I)=A(I)+A(I-1)+1
+143	CONTINUE 
+	MAX=MAX+1
+	H=A(N)
+	WRITE(2,144) MAX,H
+C	形成单元刚度矩阵,并叠加成整体刚度矩阵
+	DO 149 I=1,H
+149	K(I)=0
+	VV=(1.-MU)/2.
+	DO 160 E=1,NE
+	CALL SECU(E)
+	ET=EE*TT(E)/(1.-MU*MU)/S/4.
+	CALL KERS(BI,BI,CI,CI)
+	KE(1,1)=H11
+	KE(1,2)=H12
+	KE(2,2)=H22
+	CALL KERS(BJ,BJ,CJ,CJ)
+	KE(3,3)=H11
+	KE(3,4)=H12
+	KE(4,4)=H22
+	CALL KERS(BM,BM,CM,CM)
+	KE(5,5)=H11
+	KE(5,6)=H12
+	KE(6,6)=H22
+	CALL KERS(BI,BJ,CI,CJ)
+	KE(1,3)=H11
+	KE(1,4)=H12
+	KE(2,3)=H21
+	KE(2,4)=H22
+	CALL KERS(BI,BM,CI,CM)
+	KE(1,5)=H11
+	KE(1,6)=H12
+	KE(2,5)=H21
+	KE(2,6)=H22
+	CALL KERS(BJ,BM,CJ,CM)
+	KE(3,5)=H11
+	KE(3,6)=H12
+	KE(4,5)=H21
+	KE(4,6)=H22
+	DO 150 P=2,6
+	DO 150 Q=1,P-1
+150	KE(P,Q)=KE(Q,P)
+	DO 151 Q=1,3
+	CN(2*Q-1)=R(MEE(Q),1)
+151	CN(2*Q)=R(MEE(Q),2)
+	DO 160 P=1,6
+	DO 160 Q=1,6
+	IF((CN(P).GE.CN(Q)).AND.CN(P).NE.0.AND.CN(Q).NE.0)
+     1K(A(CN(P))-CN(P)+CN(Q))=K(A(CN(P))-CN(P)+CN(Q))
+	2+KE(P,Q)
+160   CONTINUE
+C	 分解刚度矩阵（K）
+	CALL FEGI(N,A,K,H)
+C	形成何在矩阵
+	DO 170 I=1,N
+C	没有发现170  有可能在下面一行  在这先加上
+170   U(I)=0.
+	DO 180 I=1,NL
+	DO 180 J=1,2
+	IK=R(FPI(I),J)
+	IF(IK.NE.0) U(IK)=FXY(I,J)
+180	CONTINUE 
+	IF(WX.EQ.0.0.OR.WY.EQ.0.0) GOTO 175
+	DO 171 E=1,NE
+	CALL SECU(E)
+	GX=TT(E)*S*WX/3.
+	GY=TT(E)*S*WY/3.
+	DO 171  I=1,3
+	IF(R(MEE(I),1).NE.0) U(R(MEE(I),1))=U(R(MEE(I),1))+GY
+	IF(R(MEE(I),2).NE.0) U(R(MEE(I),2))=U(R(MEE(I),2))+GY
+171	CONTINUE
+175	DO 172 I=1,N
+172	U(I)=U(I)*0.01
+	CALL OUT(U,NP,R,N)
+C	求解线性代数方程组,输出节点位移
+	CALL HUDI(N,MAX,A,U,K,H)
+	WRITE(2,4001)
+	CALL OUT(U,NP,R,N)
+C	计算单元应力分量
+	WRITE(2,4002)
+	PI=3.1415926
+	DO 300 E=1,NE
+	CALL SECU(E)
+	DO 250 P=1,3
+	DO 250 Q=1,2
+	IF(R(MEE(P),Q).NE.0) UU(P,Q)=U(R(MEE(P),Q))
+	IF(R(MEE(P),Q).EQ.0) UU(P,Q)=0.
+
+250	CONTINUE
+	UI=UU(1,1)
+	UJ=UU(2,1)
+	UM=UU(3,1)
+	VI=UU(1,2)
+	VJ=UU(2,2)
+	VM=UU(3,2)
+	ETT=EE/(1.-MU*MU)/S/2.
+	SIX=ETT*(BI*UI+BJ*UJ+BM*UM+MU*(CI*VI+CJ*VJ+CM*VM))
+	SIY=ETT*(MU*(BI*UI+BJ*UJ+BM*UM)+CI*VI+CJ*VJ+CM*VM)
+	TXY=ETT*(1.-MU)*(CI*UI+BI*VI+CJ*UJ+BJ*VJ+CM*UM+BM*VM)
+     1/2
+	H1=SIX+SIY
+	H2=SQRT((SIX-SIY)**2+4.*TXY*TXY)
+	SI1=(H1+H2)/2
+	SI2=(H1-H2)/2
+c	***************************************
+c	有问题 不知道这是ie还是1e
+	IF(ABS(SIX-SIY).LE.1E-6)ALEF=45.
+	IF(ABS(SIX-SIY).GT.1E-6)ALEF=90.*ATAN(2.*TXY/(SIX-SIY))
+     1/PI		     
+
+c	*********************************
+	WRITE(2,3)E,SIX,SIY,SI1,SI2,ALEF
+	
+300	CONTINUE
+C	格式语句
+29	FORMAT(I10)
+30	FORMAT(4I8,5F15.5)
+37	FORMAT(8F10.2)
+32	FORMAT(8I8)
+1111	FORMAT(10F12.2)
+2222	FORMAT(10I7)
+1101	FORMAT(1X,'NP=',I4,8X,'NE=',I4,8X,'NB=',I4,8X,'NL=',I4,
+     11X,'EE=',E12.4,5X,'MU=',F10.6,5X,'C=',F8.2,5X,'WX=',
+     2F8.2,5X,'WY=',F8.2/)
+1102	FORMAT(1X,'NODAL POINT  X CO-ORDINATE  Y CO-ORDINATE')
+1003	FORMAT(2X,I5,2F16.4) 
+1103	FORMAT(1X,'ELEMENT NO NODAL POITS OF THE ELEMENT   TT')
+2200	FORMAT(I8,5X,3I8,F10.2)
+111	FORMAT(5X,'N=',I10)
+144	FORMAT(2X,'MAX=',I10,10X,'H=',I10)
+4001	FORMAT(//5X,'NODAL DISPLACEMENTS'/)
+4002	FORMAT(//15X,'ELEMENT STRESSES'/1X,'ELEMENT',1X,'SIGMA X
+     1',2X,'SIGMA Y',3X,'TAU X-Y',3X,'SIGMA 1',3X,
+     2'SIGMA 2',3X,'ALFA'/)    
+C	有问题************************************************
+ 
+3     FORMAT(I6,6E14.4)
+	CLOSE(2)
+c	********************************************************
+	STOP
+	END
+
+
+C	*****************************************	
+C	计算与单元刚度矩阵有关信息与系数子程序					
+
+	SUBROUTINE SECU(E)
+	REAL MU
+	INTEGER E
+	COMMON/CC1/EE,MU,XX(300),YY(300),IE(500),JE(500),ME(500),
+     1MEE(3),BI,BJ,BM,CI,CJ,CM,S
+     2/CC2/ET,H11,H22,H12,H21
+	I=IE(E)
+	MEE(1)=I
+	J=JE(E)
+	MEE(2)=J
+	M=ME(E)
+	MEE(3)=M
+	BI=YY(J)-YY(M)
+	BJ=YY(M)-YY(I)
+	BM=YY(I)-YY(J)
+	CI=XX(M)-XX(J)
+	CJ=XX(I)-XX(M)
+	CM=XX(J)-XX(I)
+	S=(BJ*CM-BM*CJ)/2
+	RETURN
+	END
+
+C	计算单元刚度矩阵子矩阵【Kst】的四个元素子程序
+	SUBROUTINE KERS(BR,BS,CR,CS)
+	REAL MU
+	COMMON/CC2/ET,H11,H22,H12,H21/CC1/EE,MU/CC3/VV
+	H11=ET*(BR*BS+VV*CR*CS)
+	H12=ET*(MU*BR*CS+VV*CR*BS)
+	H21=ET*(MU*CR*BS+VV*BR*CS)
+	H22=ET*(CR*CS+VV*BR*BS)
+	RETURN
+	END
+
+
+
+C	*****************************************
+C	分离刚度矩阵子程序
+	SUBROUTINE FEGI(N,A,K,H)
+	INTEGER A,P,Q,H
+	REAL K
+	DIMENSION A(N),K(H)
+	DO 10 J=2,N
+C	有问题   不知道时间的一还是什么
+c	**********************************************
+
+	L=A(J-1)+J+1-A(J)
+c	****************************************************	
+	DO 10 I=L,J
+	Q=A(J)-J+I
+	
+	IF((I-1).LE.0) GOTO 778
+	
+	 
+	M=A(I-1)-A(I)+I 
+	GOTO 654
+778	M=0
+654	CONTINUE
+	DO 10 P=L,I-1
+	IF(P.GT.M)K(Q)=K(Q)-K(A(I)-I+P)*K(A(J)-J+P)/K(A(P))
+10	CONTINUE
+	RETURN
+	END
+
+C	求解线性代数方程组子程序
+	SUBROUTINE HUDI(N,MAX,A,U,K,H)
+	REAL K
+	INTEGER P,A,H
+	DIMENSION A(N),U(N),K(H)
+	DO 100 I=2,N
+	DO 100 P=A(I-1)+I+1-A(I),I-1
+C	有问题*****************************************
+100	U(I)=U(I)-K(A(I)-I+P)*U(P)/K(A(P))
+	DO 300 I=N,1,-1 
+
+c	***********************************************
+	IF((I+MAX).LT.N)L=I+MAX
+	IF((I+MAX).GE.N)L=N
+	DO 200 P=I+1,L
+	IF((A(P)-P+I).GT.A(P-1)) U(I)=U(I)-K(A(P)-P+I)*U(P)
+200	CONTINUE
+	U(I)=U(I)/K(A(I))
+300	CONTINUE
+	RETURN
+	END
+
+C	打印节点荷载矩阵和位移向量子程序
+	SUBROUTINE OUT(U,NP,R,N)
+	INTEGER R
+	DIMENSION U(400),R(400,2)
+
+	DO 131 I=1,NP
+	IF(R(I,1).EQ.0)A=0
+	IF(R(I,1).NE.0)A=U(R(I,1))
+	IF(R(I,2).EQ.0)B=0
+	IF(R(I,2).NE.0)B=U(R(I,2))
+	WRITE(2,130)I,A,B
+130	FORMAT(1X,I10,2E14.6)
+131	CONTINUE
+	RETURN
+	END
+	
+				
+
+
+
+
+
+	
+
+
+
